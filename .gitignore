@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+*.blend
+*.blend1
+*.obj
+*.mtl
+
+.DS_Store
+Thumbs.db
+
+dist/
+build/
+*.zip
