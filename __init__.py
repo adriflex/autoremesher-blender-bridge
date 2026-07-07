@@ -1,6 +1,6 @@
 bl_info = {
     "name": "AutoRemesher Bridge",
-    "author": "AutoRemesher Bridge contributors",
+    "author": "Adriflex",
     "version": (0, 1, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AutoRemesher",

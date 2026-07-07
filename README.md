@@ -84,6 +84,10 @@ The result is imported as:
 - UV transfer is best-effort and depends on the source and remeshed topology.
 - Large meshes can take time. Blender may appear busy while AutoRemesher runs.
 
+## Author
+
+Made by [Adriflex](https://adriflex.github.io/).
+
 ## License
 
 This add-on is released under GPL-3.0-or-later.

@@ -4,7 +4,7 @@ id = "autoremesher_bridge"
 version = "0.1.0"
 name = "AutoRemesher Bridge"
 tagline = "Run AutoRemesher on the active mesh"
-maintainer = "AutoRemesher Bridge contributors"
+maintainer = "Adriflex"
 type = "add-on"
 
 blender_version_min = "4.2.0"
