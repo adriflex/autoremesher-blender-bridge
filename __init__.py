@@ -1,7 +1,7 @@
 bl_info = {
     "name": "AutoRemesher Bridge",
     "author": "Adriflex",
-    "version": (0, 1, 1),
+    "version": (0, 1, 2),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AutoRemesher",
     "description": "Run AutoRemesher on the active mesh and import the result as a copy",
@@ -23,6 +23,7 @@ from .bridge_helpers import (
 )
 
 AUTHOR_URL = "https://adriflex.github.io/"
+AUTOREMESHER_RELEASES_URL = "https://github.com/huxingyi/autoremesher/releases"
 
 
 class AUTOREMESHERBRIDGE_AddonPreferences(bpy.types.AddonPreferences):
@@ -39,6 +40,11 @@ class AUTOREMESHERBRIDGE_AddonPreferences(bpy.types.AddonPreferences):
         layout = self.layout
         layout.prop(self, "executable_path")
         layout.separator()
+        layout.operator(
+            "wm.url_open",
+            text="Download AutoRemesher",
+            icon="IMPORT",
+        ).url = AUTOREMESHER_RELEASES_URL
         layout.operator("wm.url_open", text="Adriflex Blog", icon="URL").url = AUTHOR_URL
 
 
