@@ -4,6 +4,8 @@ A small Blender add-on that runs [AutoRemesher](https://github.com/huxingyi/auto
 
 It is intentionally thin: Blender exports a temporary OBJ, AutoRemesher processes it, then Blender imports the remeshed OBJ as a copy. The original mesh is left untouched unless you enable **Hide Original**.
 
+![AutoRemesher Bridge interface](assets/interface-screenshot.png)
+
 ## Features
 
 - Remesh the active mesh from Blender
