@@ -24,7 +24,21 @@ https://github.com/huxingyi/autoremesher
 
 ## Installation
 
-### Option 1: Blender extensions folder
+### Option 1: Release ZIP
+
+Download the latest `autoremesher_bridge-*.zip` from the releases page:
+
+https://github.com/adriflex/autoremesher-blender-bridge/releases
+
+Install it from Blender:
+
+```text
+Edit > Preferences > Add-ons > Install from Disk
+```
+
+Then enable **AutoRemesher Bridge** in Blender preferences.
+
+### Option 2: Blender extensions folder
 
 Copy this folder into your Blender user extensions folder:
 
@@ -33,14 +47,6 @@ Blender/<version>/extensions/user_default/autoremesher_bridge
 ```
 
 Then enable **AutoRemesher Bridge** in Blender preferences.
-
-### Option 2: ZIP install
-
-Zip the contents of this folder and install it from Blender:
-
-```text
-Edit > Preferences > Add-ons > Install from Disk
-```
 
 ## AutoRemesher executable
 
