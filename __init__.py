@@ -1,7 +1,7 @@
 bl_info = {
     "name": "AutoRemesher Bridge",
     "author": "Adriflex",
-    "version": (0, 1, 2),
+    "version": (0, 1, 3),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > AutoRemesher",
     "description": "Run AutoRemesher on the active mesh and import the result as a copy",

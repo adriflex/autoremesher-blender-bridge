@@ -59,14 +59,8 @@ def validate_executable(executable_path):
             "AutoRemesher executable is not configured. Set it in add-on "
             f"preferences, {ENV_EXECUTABLE}, or PATH."
         )
-    path = Path(executable_path)
-
-    # Regular file
+    path = _resolve_app_bundle(Path(executable_path))
     if path.is_file():
-        return ""
-
-    # macOS .app bundle (directory)
-    if sys.platform == "darwin" and path.name.endswith(".app") and path.is_dir():
         return ""
 
     return f"AutoRemesher executable not found: {path}"
