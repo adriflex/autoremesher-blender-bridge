@@ -65,6 +65,9 @@ Alternatively, leave the preference empty and use either:
 - the `AUTOREMESHER_PATH` environment variable
 - an `autoremesher` or `autoremesher.exe` executable available in your PATH
 
+On macOS, you can select `/Applications/autoremesher.app`. The add-on will
+automatically use the executable inside the application bundle.
+
 ## Usage
 
 1. Select a mesh object.
