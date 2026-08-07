@@ -17,7 +17,7 @@ It is intentionally thin: Blender exports a temporary OBJ, AutoRemesher processe
 
 ## Requirements
 
-- Blender 4.2 or newer
+- Blender 4.2 or newer (tested with Blender 5.2 LTS)
 - AutoRemesher installed separately
 
 This repository does not include AutoRemesher binaries. Download AutoRemesher from the upstream project:
