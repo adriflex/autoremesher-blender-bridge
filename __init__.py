@@ -9,9 +9,11 @@ bl_info = {
 }
 
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 import bpy
 
@@ -106,12 +108,31 @@ class AUTOREMESHERBRIDGE_OT_remesh_active(bpy.types.Operator):
     bl_description = "Run AutoRemesher on the active mesh and import the result as a new object"
     bl_options = {"REGISTER", "UNDO"}
 
+    _running = False  # class-level: blocks a second concurrent invocation
+
+    _timer = None
+    _process = None
+    _temp_dir = None
+    _input_path = None
+    _output_path = None
+    _report_path = None
+    _source_obj = None
+    _settings = None
+    _original_selection = None
+    _original_active = None
+    _start_time = None
+
+    _SPINNER = "|/-\\"
+
     @classmethod
     def poll(cls, context):
+        if cls._running:
+            cls.poll_message_set("AutoRemesher is already running")
+            return False
         obj = context.active_object
         return obj is not None and obj.type == "MESH"
 
-    def execute(self, context):
+    def invoke(self, context, event):
         settings = context.scene.autoremesher_bridge_settings
         prefs = context.preferences.addons[__package__].preferences
         configured_path = bpy.path.abspath(prefs.executable_path)
@@ -121,61 +142,127 @@ class AUTOREMESHERBRIDGE_OT_remesh_active(bpy.types.Operator):
             self.report({"ERROR"}, error)
             return {"CANCELLED"}
 
-        source_obj = context.active_object
-        original_selection = list(context.selected_objects)
-        original_active = context.view_layer.objects.active
-        finished_import = None
+        self._source_obj = context.active_object
+        self._settings = settings
+        self._original_selection = list(context.selected_objects)
+        self._original_active = context.view_layer.objects.active
 
-        with tempfile.TemporaryDirectory(prefix="autoremesher_bridge_") as temp_dir:
-            temp_path = Path(temp_dir)
-            input_path = temp_path / "input.obj"
-            output_path = temp_path / "output.obj"
-            report_path = temp_path / "report.txt"
+        self._temp_dir = tempfile.mkdtemp(prefix="autoremesher_bridge_")
+        temp_path = Path(self._temp_dir)
+        self._input_path = temp_path / "input.obj"
+        self._output_path = temp_path / "output.obj"
+        self._report_path = temp_path / "report.txt"
 
-            try:
-                self._export_active_mesh(context, source_obj, input_path, settings)
-                command = build_autoremesher_command(
-                    executable,
-                    input_path,
-                    output_path,
-                    report_path,
-                    target_quads=settings.target_quads,
-                    edge_scaling=settings.edge_scaling,
-                    sharp_edge=settings.sharp_edge,
-                    smooth_normal=settings.smooth_normal,
-                    adaptivity=settings.adaptivity,
-                )
-                result = subprocess.run(
-                    command,
-                    cwd=str(executable.parent),
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    message = result.stderr.strip() or result.stdout.strip()
-                    self.report({"ERROR"}, message or "AutoRemesher failed")
-                    return {"CANCELLED"}
-                if not output_path.is_file():
-                    self.report({"ERROR"}, "AutoRemesher did not create an output OBJ")
-                    return {"CANCELLED"}
+        try:
+            self._export_active_mesh(context, self._source_obj, self._input_path, settings)
+            command = build_autoremesher_command(
+                executable,
+                self._input_path,
+                self._output_path,
+                self._report_path,
+                target_quads=settings.target_quads,
+                edge_scaling=settings.edge_scaling,
+                sharp_edge=settings.sharp_edge,
+                smooth_normal=settings.smooth_normal,
+                adaptivity=settings.adaptivity,
+            )
+            # Popen (non-blocking) instead of subprocess.run - a blocking call
+            # here would freeze Blender's whole UI for as long as the remesh
+            # takes. A timer + modal() below polls it instead.
+            self._process = subprocess.Popen(
+                command,
+                cwd=str(executable.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except Exception as exc:
+            self._cleanup_temp()
+            self.report({"ERROR"}, f"Failed to start AutoRemesher: {exc}")
+            return {"CANCELLED"}
 
-                imported = self._import_result(context, output_path)
-                imported.name = f"{source_obj.name}_autoremesh"
-                imported.data.name = f"{source_obj.data.name}_autoremesh"
-                self._copy_materials(source_obj, imported)
-                if settings.transfer_uvs and source_obj.data.uv_layers:
-                    self._transfer_uvs(context, source_obj, imported)
-                if settings.hide_original:
-                    source_obj.hide_set(True)
+        AUTOREMESHERBRIDGE_OT_remesh_active._running = True
+        AUTOREMESHERBRIDGE_OT_remesh_active._start_time = time.time()
+        context.workspace.status_text_set("AutoRemesher running... (Esc to cancel)")
+        self._timer = context.window_manager.event_timer_add(0.25, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
 
-                self._select_only(context, imported)
-                finished_import = imported
-                self._report_stats(report_path)
-                return {"FINISHED"}
-            finally:
-                if finished_import is None:
-                    self._restore_selection(context, original_selection, original_active)
+    def modal(self, context, event):
+        if event.type == 'ESC':
+            self._process.terminate()
+            self._finish(context)
+            self._restore_selection(context, self._original_selection, self._original_active)
+            self._cleanup_temp()
+            self.report({"WARNING"}, "AutoRemesher cancelled")
+            return {"CANCELLED"}
+
+        if event.type != 'TIMER':
+            return {"PASS_THROUGH"}
+
+        elapsed = time.time() - self._start_time
+        spinner = self._SPINNER[int(elapsed * 4) % len(self._SPINNER)]
+        context.workspace.status_text_set(
+            f"{spinner} AutoRemesher running... {elapsed:.1f}s (Esc to cancel)"
+        )
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()  # keeps the panel's progress ring animating
+
+        returncode = self._process.poll()
+        if returncode is None:
+            return {"PASS_THROUGH"}  # still running - UI stays responsive
+
+        self._finish(context)
+
+        if returncode != 0:
+            _, stderr = self._process.communicate()
+            message = (stderr or "").strip()
+            self._restore_selection(context, self._original_selection, self._original_active)
+            self._cleanup_temp()
+            self.report({"ERROR"}, message or "AutoRemesher failed")
+            return {"CANCELLED"}
+
+        if not self._output_path.is_file():
+            self._restore_selection(context, self._original_selection, self._original_active)
+            self._cleanup_temp()
+            self.report({"ERROR"}, "AutoRemesher did not create an output OBJ")
+            return {"CANCELLED"}
+
+        try:
+            imported = self._import_result(context, self._output_path)
+            imported.name = f"{self._source_obj.name}_autoremesh"
+            imported.data.name = f"{self._source_obj.data.name}_autoremesh"
+            self._copy_materials(self._source_obj, imported)
+            if self._settings.transfer_uvs and self._source_obj.data.uv_layers:
+                self._transfer_uvs(context, self._source_obj, imported)
+            if self._settings.hide_original:
+                self._source_obj.hide_set(True)
+
+            self._select_only(context, imported)
+            self._report_stats(self._report_path)
+        finally:
+            self._cleanup_temp()
+
+        return {"FINISHED"}
+
+    def _finish(self, context):
+        self._remove_timer(context)
+        context.workspace.status_text_set(None)
+        AUTOREMESHERBRIDGE_OT_remesh_active._running = False
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+    def _remove_timer(self, context):
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+
+    def _cleanup_temp(self):
+        if self._temp_dir and os.path.isdir(self._temp_dir):
+            shutil.rmtree(self._temp_dir, ignore_errors=True)
+        self._temp_dir = None
 
     def _export_active_mesh(self, context, source_obj, input_path, settings):
         self._select_only(context, source_obj)
@@ -279,7 +366,15 @@ class AUTOREMESHERBRIDGE_PT_panel(bpy.types.Panel):
         layout.prop(settings, "transfer_uvs")
         layout.prop(settings, "hide_original")
         layout.separator()
-        layout.operator(AUTOREMESHERBRIDGE_OT_remesh_active.bl_idname)
+        if AUTOREMESHERBRIDGE_OT_remesh_active._running:
+            elapsed = time.time() - AUTOREMESHERBRIDGE_OT_remesh_active._start_time
+            pulse = elapsed % 2.0  # no real progress % from the external
+            pulse = pulse if pulse <= 1.0 else 2.0 - pulse  # process, so pulse instead of faking one
+            layout.progress(
+                factor=pulse, type='RING', text=f"Remeshing... {elapsed:.1f}s"
+            )
+        else:
+            layout.operator(AUTOREMESHERBRIDGE_OT_remesh_active.bl_idname)
 
         executable = resolve_executable_path(bpy.path.abspath(prefs.executable_path))
         if not os.path.isfile(executable):
